@@ -52,7 +52,7 @@ const int avgRuntimes = 33;
 static readonly MyItemType scatterAmmo = new MyItemType("MyObjectBuilder_AmmoMagazine", "SemiAutoPistolMagazine");
 
 Program()
-        {
+{
     if (!string.IsNullOrEmpty(Me.CustomData)) ParseConfig();
     else WriteConfig();
 
