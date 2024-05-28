@@ -2,7 +2,7 @@
 //by eboyar
 #region FIELDS
 
-const string version = "1.1.20";
+const string version = "1.1.23";
 
 List<string> DDs = new List<string>();
 
@@ -678,6 +678,8 @@ IEnumerator<bool> ReloadDDs(string type)
 
             foreach (var hardpoint in bay.Hardpoints)
             {
+                hardpoint.GasTanks.Clear();
+
                 var connector = hardpoint.Connector;
                 if (!IsValidBlock(connector))
                 {
@@ -723,6 +725,7 @@ IEnumerator<bool> ReloadDDs(string type)
                     else if (block is IMyGasTank)
                     {
                         tempHydrogenTanks.Add(block as IMyGasTank);
+                        hardpoint.GasTanks.Add(block as IMyGasTank);
                     }
                 }
             }
@@ -771,11 +774,23 @@ IEnumerator<bool> DeployDDs(string type)
             DisplayStatus("MAIN", $"Deploying {type} bay {bay.Number}");
             if (bay.Timer == null)
             {
+                runCounter = 0;
                 foreach (var hardpoint in bay.Hardpoints)
                 {
                     if (!IsValidBlock(hardpoint.Merge) || !IsValidBlock(hardpoint.Connector))
                     {
                         continue;
+                    }
+
+                    foreach (var tank in hardpoint.GasTanks)
+                    {
+                        runCounter++;
+                        if (runCounter >= 20)
+                        {
+                            runCounter = 0;
+                            yield return true;
+                        }
+                        tank.Stockpile = false;
                     }
                 }
                 yield return true;
@@ -1550,6 +1565,7 @@ class Hardpoint
     public IMyShipMergeBlock Merge { get; set; }
     public IMyShipConnector Connector { get; set; }
     public IMyProjector Projector { get; set; }
+    public List<IMyGasTank> GasTanks { get; set; } = new List<IMyGasTank>(10);
 }
 
 class Printer
