@@ -2,7 +2,7 @@
 //by eboyar
 #region FIELDS
 
-const string version = "1.1.7";
+const string version = "1.1.20";
 
 List<string> DDs = new List<string>();
 
@@ -17,10 +17,10 @@ int runCounter = 0;
 int loopCounter = 0;
 const int maxIterations = 1000;
 
-string disposableDroneAssemblerTag = "DDA";
-string nonDisposableDroneAssemblerTag = "Printer";
 string disposableDroneTag = "ASD";
 string nonDisposableDroneTag = "ASC";
+string disposableDroneAssemblerTag = "DDA";
+string nonDisposableDroneAssemblerTag = "Printer";
 
 bool splitQueue = false;
 bool creativeMode = false;
@@ -58,12 +58,15 @@ List<IMyGasTank> tempHydrogenTanks = new List<IMyGasTank>(100);
 List<IMyBlockGroup> blockGroups = new List<IMyBlockGroup>(80);
 List<IMyBlockGroup> splitBlockGroups = new List<IMyBlockGroup>(80);
 List<IMyBlockGroup> selectedBlockGroups = new List<IMyBlockGroup>(15);
+Dictionary<IMyBlockGroup, List<IMyTerminalBlock>> cachedBlockGroups = new Dictionary<IMyBlockGroup, List<IMyTerminalBlock>>();
+
 
 
 //stuff for fast lookups
 static readonly MyItemType
     uranium = new MyItemType("MyObjectBuilder_Ingot", "Uranium"),
-    scatterAmmo = new MyItemType("MyObjectBuilder_AmmoMagazine", "SemiAutoPistolMagazine"),
+    explosive = new MyItemType("MyObjectBuilder_Component", "Explosives"),
+    pistolMag = new MyItemType("MyObjectBuilder_AmmoMagazine", "SemiAutoPistolMagazine"),
     gatlingAmmo = new MyItemType("MyObjectBuilder_AmmoMagazine", "NATO_25x184mm"),
     missileAmmo = new MyItemType("MyObjectBuilder_AmmoMagazine", "Missile200mm"),
     autocannonAmmo = new MyItemType("MyObjectBuilder_AmmoMagazine", "AutocannonClip"),
@@ -75,7 +78,8 @@ static readonly MyItemType
 static readonly Dictionary<string, MyItemType> itemTypes = new Dictionary<string, MyItemType>
         {
             { "uranium", uranium },
-            { "scatterAmmo", scatterAmmo },
+            { "explosive", explosive },
+            { "pistolMag", pistolMag },
             { "gatlingAmmo", gatlingAmmo },
             { "missileAmmo", missileAmmo },
             { "autocannonAmmo", autocannonAmmo },
@@ -587,6 +591,10 @@ IEnumerator<bool> ReloadDDs(string type)
             if (group.Name.Contains(disposableDroneTag))
             {
                 selectedBlockGroups.Add(group);
+                List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();
+                group.GetBlocks(blocks);
+                cachedBlockGroups[group] = blocks;
+                yield return true;
             }
         }
     }
@@ -597,10 +605,31 @@ IEnumerator<bool> ReloadDDs(string type)
             if (group.Name.Equals($"{type} {disposableDroneTag}"))
             {
                 selectedBlockGroups.Add(group);
+                List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();
+                group.GetBlocks(blocks);
+                cachedBlockGroups[group] = blocks;
+                yield return true;
             }
         }
     }
 
+    yield return true;
+    int totalValidMerges = 0;
+    foreach (var bay in assemblyBays)
+    {
+        if (string.IsNullOrEmpty(type) || bay.Type == type)
+        {
+            foreach (var hardpoint in bay.Hardpoints)
+            {
+                if (IsValidBlock(hardpoint.Merge))
+                {
+                    totalValidMerges++;
+                }
+            }
+        }
+    }
+
+    int maxRuns = Math.Max(totalValidMerges - 1, 10);
 
     yield return true;
     runCounter = 0;
@@ -615,7 +644,7 @@ IEnumerator<bool> ReloadDDs(string type)
                 {
                     runCounter++;
                     merge.Enabled = false;
-                    if (runCounter >= 10)
+                    if (runCounter >= maxRuns)
                     {
                         runCounter = 0;
                         yield return true;
@@ -624,13 +653,14 @@ IEnumerator<bool> ReloadDDs(string type)
             }
         }
     }
+
     yield return true;
     yield return true;
     yield return true;
     yield return true;
     yield return true;
     yield return true;
-    //this is necessary to prevent race issues
+    //this mess is necessary to prevent race issues with unmerging
 
     DisplayStatus("MAIN", "Scanning bays");
     foreach (var bay in assemblyBays)
@@ -642,10 +672,9 @@ IEnumerator<bool> ReloadDDs(string type)
             {
                 continue;
             }
-
             logger.RReport($"Scanning {type} bay {bay.Number}");
-            blocks.Clear();
-            group.GetBlocks(blocks);
+
+            List<IMyTerminalBlock> blocks = cachedBlockGroups[group];
 
             foreach (var hardpoint in bay.Hardpoints)
             {
@@ -702,7 +731,6 @@ IEnumerator<bool> ReloadDDs(string type)
 
     logger.RReport($"Reloading {type} bays");
     DisplayStatus("MAIN", $"Reloading {type} bays");
-
     runCounter = 0;
     foreach (var block in tempBlocksToResupply)
     {
@@ -717,7 +745,8 @@ IEnumerator<bool> ReloadDDs(string type)
 
     logger.RReport("Refueling hydrogen tanks");
     DisplayStatus("MAIN", "Refueling hydrogen tanks");
-    while (tempHydrogenTanks.Count > 0)
+    runCounter = 0;
+    while (tempHydrogenTanks.Count > 0 && runCounter < 180)
     {
         for (int i = tempHydrogenTanks.Count - 1; i >= 0; i--)
         {
@@ -727,6 +756,7 @@ IEnumerator<bool> ReloadDDs(string type)
                 tempHydrogenTanks.RemoveAt(tempHydrogenTanks.Count - 1);
             }
         }
+        runCounter++;
         yield return true;
     }
 }
