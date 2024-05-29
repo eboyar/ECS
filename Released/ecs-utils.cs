@@ -2,7 +2,7 @@
 //by eboyar
 #region FIELDS
 
-const string version = "1.1.23";
+const string version = "1.2.0";
 
 List<string> DDs = new List<string>();
 
@@ -11,7 +11,8 @@ List<Printer> printers = new List<Printer>();
 List<IMyShipConnector> dockingPorts = new List<IMyShipConnector>();
 
 IMyProgrammableBlock APCK;
-List<Container> containers = new List<Container>();
+List<Container> containers = new List<Container>(100);
+List<Welder> welders = new List<Welder>(300);
 
 int runCounter = 0;
 int loopCounter = 0;
@@ -21,6 +22,9 @@ string disposableDroneTag = "ASD";
 string nonDisposableDroneTag = "ASC";
 string disposableDroneAssemblerTag = "DDA";
 string nonDisposableDroneAssemblerTag = "Printer";
+
+string managedInventoryTag = "managed";
+string providerGroupTag = "Supplies";
 
 bool splitQueue = false;
 bool creativeMode = false;
@@ -55,17 +59,17 @@ List<IMyProjector> tempProjectors = new List<IMyProjector>();
 List<IMyTerminalBlock> tempBlocksToResupply = new List<IMyTerminalBlock>(500);
 List<IMyGasTank> tempHydrogenTanks = new List<IMyGasTank>(100);
 
+List<MyInventoryItem> tempItems = new List<MyInventoryItem>(100);
+List<IMyInventory> providers = new List<IMyInventory>(50);
+
 List<IMyBlockGroup> blockGroups = new List<IMyBlockGroup>(80);
 List<IMyBlockGroup> splitBlockGroups = new List<IMyBlockGroup>(80);
 List<IMyBlockGroup> selectedBlockGroups = new List<IMyBlockGroup>(15);
 Dictionary<IMyBlockGroup, List<IMyTerminalBlock>> cachedBlockGroups = new Dictionary<IMyBlockGroup, List<IMyTerminalBlock>>();
 
-
-
 //stuff for fast lookups
 static readonly MyItemType
     uranium = new MyItemType("MyObjectBuilder_Ingot", "Uranium"),
-    explosive = new MyItemType("MyObjectBuilder_Component", "Explosives"),
     pistolMag = new MyItemType("MyObjectBuilder_AmmoMagazine", "SemiAutoPistolMagazine"),
     gatlingAmmo = new MyItemType("MyObjectBuilder_AmmoMagazine", "NATO_25x184mm"),
     missileAmmo = new MyItemType("MyObjectBuilder_AmmoMagazine", "Missile200mm"),
@@ -73,7 +77,26 @@ static readonly MyItemType
     assaultAmmo = new MyItemType("MyObjectBuilder_AmmoMagazine", "MediumCalibreAmmo"),
     artilleryAmmo = new MyItemType("MyObjectBuilder_AmmoMagazine", "LargeCalibreAmmo"),
     smallRailgunAmmo = new MyItemType("MyObjectBuilder_AmmoMagazine", "SmallRailgunAmmo"),
-    largeRailgunAmmo = new MyItemType("MyObjectBuilder_AmmoMagazine", "LargeRailgunAmmo");
+    largeRailgunAmmo = new MyItemType("MyObjectBuilder_AmmoMagazine", "LargeRailgunAmmo"),
+    explosive = new MyItemType("MyObjectBuilder_Component", "Explosives"),
+    steelPlate = new MyItemType("MyObjectBuilder_Component", "SteelPlate"),
+    interiorPlate = new MyItemType("MyObjectBuilder_Component", "InteriorPlate"),
+    constructionComponent = new MyItemType("MyObjectBuilder_Component", "Construction"),
+    metalGrid = new MyItemType("MyObjectBuilder_Component", "MetalGrid"),
+    smallTube = new MyItemType("MyObjectBuilder_Component", "SmallTube"),
+    largeTube = new MyItemType("MyObjectBuilder_Component", "LargeTube"),
+    motor = new MyItemType("MyObjectBuilder_Component", "Motor"),
+    display = new MyItemType("MyObjectBuilder_Component", "Display"),
+    bulletproofGlass = new MyItemType("MyObjectBuilder_Component", "BulletproofGlass"),
+    computer = new MyItemType("MyObjectBuilder_Component", "Computer"),
+    reactorComponent = new MyItemType("MyObjectBuilder_Component", "Reactor"),
+    thrusterComponent = new MyItemType("MyObjectBuilder_Component", "Thrust"),
+    gravityGeneratorComponent = new MyItemType("MyObjectBuilder_Component", "GravityGenerator"),
+    medicalComponent = new MyItemType("MyObjectBuilder_Component", "Medical"),
+    radioCommunicationComponent = new MyItemType("MyObjectBuilder_Component", "RadioCommunication"),
+    detectorComponent = new MyItemType("MyObjectBuilder_Component", "Detector"),
+    solarCell = new MyItemType("MyObjectBuilder_Component", "SolarCell"),
+    powerCell = new MyItemType("MyObjectBuilder_Component", "PowerCell");
 
 static readonly Dictionary<string, MyItemType> itemTypes = new Dictionary<string, MyItemType>
         {
@@ -86,7 +109,25 @@ static readonly Dictionary<string, MyItemType> itemTypes = new Dictionary<string
             { "assaultAmmo", assaultAmmo },
             { "artilleryAmmo", artilleryAmmo },
             { "smallRailgunAmmo", smallRailgunAmmo },
-            { "largeRailgunAmmo", largeRailgunAmmo }
+            { "largeRailgunAmmo", largeRailgunAmmo },
+            { "steelplate", steelPlate },
+            { "interior", interiorPlate },
+            { "construction", constructionComponent },
+            { "metalgrid", metalGrid },
+            { "smalltube", smallTube },
+            { "largetube", largeTube },
+            { "motor", motor },
+            { "display", display },
+            { "bglass", bulletproofGlass },
+            { "computer", computer },
+            { "reactor", reactorComponent },
+            { "thruster", thrusterComponent },
+            { "gravity", gravityGeneratorComponent },
+            { "medical", medicalComponent },
+            { "radio", radioCommunicationComponent },
+            { "detector", detectorComponent },
+            { "solarcell", solarCell },
+            { "powercell", powerCell }
         };
 
 static readonly MyDefinitionId
@@ -196,6 +237,8 @@ IEnumerator<bool> Setup()
             var printerNumber = int.Parse(b.CustomName.Split(' ')[1]);
             var printer = printers.FirstOrDefault(p => p.Number == printerNumber);
             var welder = b as IMyShipWelder;
+
+            if (b.CustomName.Contains(managedInventoryTag)) welders.Add(new Welder(welder, ParseLoadout(welder)));
 
             if (printer != null)
             {
@@ -323,7 +366,8 @@ IEnumerator<bool> Setup()
         }
         else if (b is IMyCargoContainer && b.CustomName.Contains("resupply"))
         {
-            containers.Add(new Container(b as IMyCargoContainer, itemTypes));
+            var cc = b as IMyCargoContainer;
+            containers.Add(new Container(cc, itemTypes, ParseLoadout(cc)));
             runCounter += 10;
         }
         else if (b is IMyShipWelder && b.CustomName.Contains(disposableDroneAssemblerTag))
@@ -331,15 +375,18 @@ IEnumerator<bool> Setup()
             var tag = b.CustomName.Split(' ')[0];
             var welderNumber = int.Parse(b.CustomName.Split(' ')[2]);
             var mBay = assemblyBays.FirstOrDefault(bay => bay.Type == tag && bay.Number == welderNumber);
+            var welder = b as IMyShipWelder;
+
+            if (b.CustomName.Contains(managedInventoryTag)) welders.Add(new Welder(welder, ParseLoadout(welder)));
 
             if (mBay != null)
             {
-                mBay.Welders.Add(b as IMyShipWelder);
+                mBay.Welders.Add(welder);
             }
             else
             {
                 var newBay = new AssemblyBay(tag, welderNumber);
-                newBay.Welders.Add(b as IMyShipWelder);
+                newBay.Welders.Add(welder);
                 assemblyBays.Add(newBay);
             }
             runCounter++;
@@ -465,11 +512,12 @@ IEnumerator<bool> Setup()
 IEnumerator<bool> UpdateInventories()
 {
     yield return true;
-    DisplayStatus("MAIN", "Updating inventory caches");
+    if (splitQueue) DisplayStatus("SPLT", "Updating inventory caches");
+    else DisplayStatus("MAIN", "Updating inventory caches");
 
     foreach (var container in containers)
     {
-        logger.RReport($"Updating invcache for {container.CargoContainer.CustomName}");
+        logger.RReport($"Updating invcache for {container.CC.CustomName}");
         container.UpdateInventory();
         yield return true;
     }
@@ -583,6 +631,7 @@ IEnumerator<bool> ReloadDDs(string type)
     blockGroups.Clear();
     selectedBlockGroups.Clear();
     GridTerminalSystem.GetBlockGroups(blockGroups);
+    yield return true;
 
     if (string.IsNullOrEmpty(type))
     {
@@ -737,7 +786,7 @@ IEnumerator<bool> ReloadDDs(string type)
     runCounter = 0;
     foreach (var block in tempBlocksToResupply)
     {
-        Resupply(block);
+        Reload(block);
         runCounter++;
         if (runCounter >= reloadsPerUpdate)
         {
@@ -1066,7 +1115,7 @@ IEnumerator<bool> ReloadNDDs()
 
     foreach (var block in tempBlocksToResupply)
     {
-        Resupply(block);
+        Reload(block);
         if (splitQueue)
         {
             logger.SRReport($"Resupplying {block.CustomName}");
@@ -1079,6 +1128,173 @@ IEnumerator<bool> ReloadNDDs()
         }
         yield return true;
     }
+}
+
+IEnumerator<bool> ReloadMIs()
+{
+    blockGroups.Clear();
+    blocks.Clear();
+    providers.Clear();
+
+    if (splitQueue)
+    {
+        logger.SRReport("Preparing to resupply managed inventories");
+        DisplayStatus("SPLT", "Preparing to resupply managed inventories");
+    }
+    else
+    {
+        logger.RReport("Preparing to resupply managed inventories");
+        DisplayStatus("MAIN", "Preparing to resupply managed inventories");
+    }
+    yield return true;
+
+    GridTerminalSystem.GetBlockGroups(blockGroups);
+    yield return true;
+
+    foreach (var group in blockGroups)
+    {
+        if (group.Name.Contains(providerGroupTag))
+        {
+            group.GetBlocks(blocks);
+            foreach (var block in blocks)
+            {
+                if (block is IMyCargoContainer)
+                {
+                    providers.Add(block.GetInventory());
+                }
+            }
+        }
+    }
+    yield return true;
+
+    foreach (var container in containers)
+    {
+        if (splitQueue)
+        {
+            splitScheduler.AddRoutine(Resupply(container));
+        }
+        else
+        {
+            scheduler.AddRoutine(Resupply(container));
+        }
+        yield return true;
+    }
+    yield return true;
+
+    foreach (var welder in welders)
+    {
+        if (splitQueue)
+        {
+            splitScheduler.AddRoutine(Resupply(welder));
+        }
+        else
+        {
+            scheduler.AddRoutine(Resupply(welder));
+        }
+        yield return true;
+    }
+    yield return true;
+
+}
+IEnumerator<bool> Resupply(ManagedInventory managedInventory)
+{
+    var inventory = managedInventory.Inventory;
+    var loadout = managedInventory.Loadout;
+    var cache = managedInventory.Cache;
+    var name = managedInventory.Name;
+
+    if (splitQueue)
+    {
+        logger.SRReport($"Resupplying {name}");
+        DisplayStatus("SPLT", $"Resupplying {name}");
+    }
+    else
+    {
+        logger.RReport($"Resupplying {name}");
+        DisplayStatus("MAIN", $"Resupplying {name}");
+    }
+    yield return true;
+
+    foreach (var currentItem in cache)
+    {
+        if (!loadout.ContainsKey(currentItem.Type) || currentItem.Amount > (MyFixedPoint)loadout[currentItem.Type])
+        {
+            foreach (var provider in providers)
+            {
+                if (provider == inventory)
+                {
+                    continue;
+                }
+
+                var transferAmount = currentItem.Amount;
+                if (loadout.ContainsKey(currentItem.Type))
+                {
+                    transferAmount -= (MyFixedPoint)loadout[currentItem.Type];
+                }
+
+                if (provider.CanItemsBeAdded(transferAmount, currentItem.Type))
+                {
+                    inventory.TransferItemTo(provider, currentItem, transferAmount);
+                    yield return true;
+                    break;
+                }
+            }
+        }
+    }
+
+    foreach (var item in loadout)
+    {
+        double amount = item.Value;
+        if (amount <= 0)
+        {
+            continue;
+        }
+
+        double currentAmount = (double)inventory.GetItemAmount(item.Key);
+        if (currentAmount >= amount)
+        {
+            continue;
+        }
+
+        foreach (var provider in providers)
+        {
+            if (provider == inventory)
+            {
+                continue;
+            }
+
+            tempItems.Clear();
+            provider.GetItems(tempItems);
+            foreach (var providerItem in tempItems)
+            {
+                if (providerItem.Type != item.Key)
+                {
+                    continue;
+                }
+
+                double transferAmount = Math.Min(amount - currentAmount, (double)providerItem.Amount);
+                if (transferAmount <= 0)
+                {
+                    continue;
+                }
+
+                inventory.TransferItemFrom(provider, providerItem, (MyFixedPoint)transferAmount);
+                yield return true;
+                currentAmount += transferAmount;
+                if (currentAmount >= amount)
+                {
+                    break;
+                }
+            }
+
+            if (currentAmount >= amount)
+            {
+                break;
+            }
+        }
+    }
+
+    yield return true;
 }
 
 #endregion ROUTINES
@@ -1133,6 +1349,17 @@ void Command(string arg)
             }
             break;
 
+        case "resupply":
+            if (splitQueue)
+            {
+                splitScheduler.AddRoutine(ReloadMIs());
+            }
+            else
+            {
+                scheduler.AddRoutine(ReloadMIs());
+            }
+            break;
+
         case "assemble":
             if (args.Length > 2)
             {
@@ -1159,7 +1386,8 @@ void Command(string arg)
             break;
     }
 }
-void Resupply(IMyTerminalBlock b)
+
+void Reload(IMyTerminalBlock b)
 {
     if (!IsValidBlock(b))
     {
@@ -1176,8 +1404,8 @@ void Resupply(IMyTerminalBlock b)
             return;
         }
 
-        var customDataLines = b.CustomData.Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
-        foreach (var line in customDataLines)
+        var cdl = b.CustomData.Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        foreach (var line in cdl)
         {
             if (line.Trim().StartsWith("tags="))
             {
@@ -1239,6 +1467,59 @@ void Resupply(IMyTerminalBlock b)
     }
 }
 
+Dictionary<MyItemType, double> ParseLoadout(IMyTerminalBlock b)
+{
+    var loadout = new Dictionary<MyItemType, double>();
+
+    if (!IsValidBlock(b) || string.IsNullOrEmpty(b.CustomData))
+    {
+        return loadout;
+    }
+
+    MyItemType itemType;
+    double amount;
+
+    var cdl = b.CustomData.Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
+    foreach (var line in cdl)
+    {
+        if (line.Trim().StartsWith("tags="))
+        {
+            continue;
+        }
+
+        var keyValue = line.Split(new[] { '=' }, StringSplitOptions.RemoveEmptyEntries);
+        if (keyValue.Length != 2)
+        {
+            continue;
+        }
+
+        if (!itemTypes.TryGetValue(keyValue[0].Trim(), out itemType))
+        {
+            continue;
+        }
+
+        var value = keyValue[1].Trim();
+        if (value.EndsWith("%"))
+        {
+            if (!double.TryParse(value.TrimEnd('%'), out amount))
+            {
+                continue;
+            }
+            amount = (double)b.GetInventory().MaxVolume * (amount / 100) / (double)itemType.GetItemInfo().Volume;
+        }
+        else
+        {
+            if (!double.TryParse(value, out amount))
+            {
+                continue;
+            }
+        }
+
+        loadout[itemType] = Math.Floor(amount);
+    }
+
+    return loadout;
+}
 void ParseConfig()
 {
     MyIniParseResult result;
@@ -1253,6 +1534,8 @@ void ParseConfig()
     nonDisposableDroneTag = ini.Get("Tags", "Non Disposable Drone Tag").ToString(nonDisposableDroneTag);
     disposableDroneAssemblerTag = ini.Get("Tags", "Disposable Drone Assembler Tag").ToString(disposableDroneAssemblerTag);
     nonDisposableDroneAssemblerTag = ini.Get("Tags", "Non Disposable Drone Assembler Tag").ToString(nonDisposableDroneAssemblerTag);
+    managedInventoryTag = ini.Get("Tags", "Managed Inventory Tag").ToString(managedInventoryTag);
+    providerGroupTag = ini.Get("Tags", "Provider Group Tag").ToString(providerGroupTag);
 
     safetyNet = ini.Get("Disposable Drones", "Safety Net").ToInt32(safetyNet);
     reloadsPerUpdate = ini.Get("Disposable Drones", "Reloads Per Update").ToInt32(reloadsPerUpdate);
@@ -1277,6 +1560,8 @@ void WriteConfig()
     ini.Set("Tags", "Non Disposable Drone Tag", nonDisposableDroneTag);
     ini.Set("Tags", "Disposable Drone Assembler Tag", disposableDroneAssemblerTag);
     ini.Set("Tags", "Non Disposable Drone Assembler Tag", nonDisposableDroneAssemblerTag);
+    ini.Set("Tags", "Managed Inventory Tag", managedInventoryTag);
+    ini.Set("Tags", "Provider Group Tag", providerGroupTag);
 
     ini.Set("Disposable Drones", "Safety Net", safetyNet.ToString());
     ini.Set("Disposable Drones", "Reloads Per Update", reloadsPerUpdate.ToString());
@@ -1357,16 +1642,16 @@ void FillToPercent(IMyTerminalBlock b, MyItemType itemType, double fillPercentag
         }
     }
 
-    if (container == null || container.CargoContainer == null)
+    if (container == null || container.CC == null)
     {
         return;
     }
 
     var transferVolume = Math.Min(container.Items[itemType] * volumePerItem, requiredVolume);
     var transferAmount = Math.Floor(transferVolume / volumePerItem);
-    var item = container.CargoContainer.GetInventory().FindItem(itemType).Value;
+    var item = container.CC.GetInventory().FindItem(itemType).Value;
 
-    inventory.TransferItemFrom(container.CargoContainer.GetInventory(), item, (MyFixedPoint)transferAmount);
+    inventory.TransferItemFrom(container.CC.GetInventory(), item, (MyFixedPoint)transferAmount);
     container.RemoveItem(itemType, transferAmount);
 }
 void FillToAmount(IMyTerminalBlock b, MyItemType itemType, double fillAmount)
@@ -1395,15 +1680,15 @@ void FillToAmount(IMyTerminalBlock b, MyItemType itemType, double fillAmount)
         }
     }
 
-    if (container == null || container.CargoContainer == null)
+    if (container == null || container.CC == null)
     {
         return;
     }
 
     var transferAmount = Math.Min(container.Items[itemType], requiredAmount);
-    var item = container.CargoContainer.GetInventory().FindItem(itemType).Value;
+    var item = container.CC.GetInventory().FindItem(itemType).Value;
 
-    inventory.TransferItemFrom(container.CargoContainer.GetInventory(), item, (MyFixedPoint)transferAmount);
+    inventory.TransferItemFrom(container.CC.GetInventory(), item, (MyFixedPoint)transferAmount);
     container.RemoveItem(itemType, transferAmount);
 }
 void FillToFull(IMyTerminalBlock b, MyItemType itemType)
@@ -1435,16 +1720,16 @@ void FillToFull(IMyTerminalBlock b, MyItemType itemType)
         }
     }
 
-    if (container == null || container.CargoContainer == null)
+    if (container == null || container.CC == null)
     {
         return;
     }
 
     var transferVolume = Math.Min(container.Items[itemType] * volumePerItem, requiredVolume);
     var transferAmount = transferVolume / volumePerItem;
-    var item = container.CargoContainer.GetInventory().FindItem(itemType).Value;
+    var item = container.CC.GetInventory().FindItem(itemType).Value;
 
-    inventory.TransferItemFrom(container.CargoContainer.GetInventory(), item, (MyFixedPoint)transferAmount);
+    inventory.TransferItemFrom(container.CC.GetInventory(), item, (MyFixedPoint)transferAmount);
     container.RemoveItem(itemType, transferAmount);
 }
 
@@ -1586,14 +1871,30 @@ class Printer
         ExtensionLimit = 0.0f;
     }
 }
-class Container
+
+class ManagedInventory
 {
-    public IMyCargoContainer CargoContainer { get; set; }
+    public Dictionary<MyItemType, double> Loadout { get; set; }
+    public List<MyInventoryItem> Cache { get; set; }
+    public IMyInventory Inventory { get; set; }
+    public string Name { get; set; }
+}
+
+class Container : ManagedInventory
+{
+    public IMyCargoContainer CC { get; set; }
     public Dictionary<MyItemType, double> Items { get; set; }
-    public Container(IMyCargoContainer cargoContainer, Dictionary<string, MyItemType> itemTypes)
+
+    public Container(IMyCargoContainer cargoContainer, Dictionary<string, MyItemType> itemTypes, Dictionary<MyItemType, double> loadout)
     {
-        CargoContainer = cargoContainer;
-        Items = new Dictionary<MyItemType, double>(10);
+        CC = cargoContainer;
+        Name = cargoContainer.CustomName;
+        Loadout = loadout;
+        Cache = new List<MyInventoryItem>(20);
+        Inventory = cargoContainer.GetInventory();
+        Inventory.GetItems(Cache);
+
+        Items = new Dictionary<MyItemType, double>(25);
         foreach (var itemType in itemTypes.Values)
         {
             Items[itemType] = 0;
@@ -1602,15 +1903,17 @@ class Container
     }
     public void UpdateInventory()
     {
-        if (CargoContainer == null || CargoContainer.Closed || !CargoContainer.IsFunctional)
+        if (CC == null || CC.Closed || !CC.IsFunctional)
         {
             return;
         }
 
-        var inventory = CargoContainer.GetInventory();
+        Cache.Clear();
+        Inventory.GetItems(Cache);
+
         foreach (var item in Items.Keys.ToList())
         {
-            Items[item] = (double)inventory.GetItemAmount(item);
+            Items[item] = (double)Inventory.GetItemAmount(item);
         }
     }
     public void RemoveItem(MyItemType itemType, double amount)
@@ -1625,6 +1928,30 @@ class Container
         }
     }
 }
+class Welder : ManagedInventory
+{
+    public IMyShipWelder W { get; set; }
+    public Welder(IMyShipWelder welder, Dictionary<MyItemType, double> loadout)
+    {
+        W = welder;
+        Name = welder.CustomName;
+        Loadout = loadout;
+        Cache = new List<MyInventoryItem>(20);
+        Inventory = welder.GetInventory();
+        Inventory.GetItems(Cache);
+    }
+    public void UpdateInventory()
+    {
+        if (W == null || W.Closed || !W.IsFunctional)
+        {
+            return;
+        }
+
+        Cache.Clear();
+        Inventory.GetItems(Cache);
+    }
+}
+
 class StatusLogger
 {
     private bool split;
@@ -1672,7 +1999,6 @@ class StatusLogger
         return status;
     }
 }
-
 class StatusDisplay
 {
     private IMyTextSurface surface;
