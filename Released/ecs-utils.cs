@@ -2,7 +2,7 @@
 //by eboyar
 #region FIELDS
 
-const string version = "1.2.4";
+const string version = "1.2.14";
 
 List<string> DDs = new List<string>();
 
@@ -23,6 +23,8 @@ string nonDisposableDroneTag = "ASC";
 string disposableDroneAssemblerTag = "DDA";
 string nonDisposableDroneAssemblerTag = "Printer";
 
+string ignoreFuel = "nofuel";
+string ignoreReload = "noreload";
 string resupplyContainerTag = "resupply";
 string managedInventoryTag = "managed";
 string providerGroupTag = "Supplies";
@@ -460,6 +462,9 @@ IEnumerator<bool> Setup()
                 bay.Projector = bayProjectors[0];
                 tempProjectors.Remove(bay.Projector);
 
+                if (bay.Projector.CustomName.Contains(ignoreFuel)) bay.IgnoreFuel = true;
+                if (bay.Projector.CustomName.Contains(ignoreReload)) bay.IgnoreReload = true;
+
                 foreach (var c in bayConnectors)
                 {
                     var closestMergeBlock = FindClosestBlock(bayMergeBlocks, c.GetPosition());
@@ -475,6 +480,9 @@ IEnumerator<bool> Setup()
             {
                 foreach (var projector in bayProjectors)
                 {
+                    if (projector.CustomName.Contains(ignoreFuel)) bay.IgnoreFuel = true;
+                    if (projector.CustomName.Contains(ignoreReload)) bay.IgnoreReload = true;
+
                     var closestMergeBlock = FindClosestBlock(bayMergeBlocks, projector.GetPosition());
                     var closestConnector = FindClosestBlock(bayConnectors, projector.GetPosition());
 
@@ -766,21 +774,21 @@ IEnumerator<bool> ReloadDDs(string type)
                         continue;
                     }
 
-                    if (block is IMyUserControllableGun)
+                    if (!bay.IgnoreReload && block is IMyUserControllableGun)
                     {
                         tempBlocksToResupply.Add(block);
                     }
-                    else if (block is IMyCargoContainer)
+                    else if (!bay.IgnoreReload && block is IMyCargoContainer)
                     {
                         tempBlocksToResupply.Add(block);
                     }
-                    else if (block is IMyReactor)
+                    else if (!bay.IgnoreReload && block is IMyReactor)
                     {
                         tempBlocksToResupply.Add(block);
                     }
                     else if (block is IMyGasTank)
                     {
-                        tempHydrogenTanks.Add(block as IMyGasTank);
+                        if (!bay.IgnoreFuel) tempHydrogenTanks.Add(block as IMyGasTank);
                         hardpoint.GasTanks.Add(block as IMyGasTank);
                     }
                 }
@@ -1204,6 +1212,7 @@ IEnumerator<bool> ReloadMIs()
             runCounter = 0;
             yield return true;
         }
+
         welder.UpdateInventory();
         if (splitQueue)
         {
@@ -1556,6 +1565,8 @@ void ParseConfig()
     disposableDroneAssemblerTag = ini.Get("Drone Tags", "Disposable Drone Assembler Tag").ToString(disposableDroneAssemblerTag);
     nonDisposableDroneAssemblerTag = ini.Get("Drone Tags", "Non Disposable Drone Assembler Tag").ToString(nonDisposableDroneAssemblerTag);
 
+    ignoreFuel = ini.Get("Inventory Tags", "Ignore Fuel Tag").ToString(ignoreFuel);
+    ignoreReload = ini.Get("Inventory Tags", "Ignore Reloads Tag").ToString(ignoreReload);
     resupplyContainerTag = ini.Get("Inventory Tags", "Resupply Container Tag").ToString(resupplyContainerTag);
     managedInventoryTag = ini.Get("Inventory Tags", "Managed Inventory Tag").ToString(managedInventoryTag);
     providerGroupTag = ini.Get("Inventory Tags", "Provider Group Tag").ToString(providerGroupTag);
@@ -1585,6 +1596,8 @@ void WriteConfig()
     ini.Set("Drone Tags", "Disposable Drone Assembler Tag", disposableDroneAssemblerTag);
     ini.Set("Drone Tags", "Non Disposable Drone Assembler Tag", nonDisposableDroneAssemblerTag);
 
+    ini.Set("Inventory Tags", "Ignore Fuel Tag", ignoreFuel);
+    ini.Set("Inventory Tags", "Ignore Reloads Tag", ignoreReload);
     ini.Set("Inventory Tags", "Resupply Container Tag", resupplyContainerTag);
     ini.Set("Inventory Tags", "Managed Inventory Tag", managedInventoryTag);
     ini.Set("Inventory Tags", "Provider Group Tag", providerGroupTag);
@@ -1861,6 +1874,8 @@ class AssemblyBay
     public IMyTimerBlock Timer { get; set; }
     public string Type { get; set; }
     public int Number { get; set; }
+    public bool IgnoreFuel { get; set; } = false;
+    public bool IgnoreReload { get; set; } = false;
 
     public AssemblyBay(string type, int number)
     {
