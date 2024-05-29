@@ -2,7 +2,7 @@
 //by eboyar
 #region FIELDS
 
-const string version = "1.2.1";
+const string version = "1.2.2";
 
 List<string> DDs = new List<string>();
 
@@ -119,7 +119,7 @@ static readonly Dictionary<string, MyItemType> itemTypes = new Dictionary<string
             { "largetube", largeTube },
             { "motor", motor },
             { "display", display },
-            { "bglass", bulletproofGlass },
+            { "glass", bulletproofGlass },
             { "computer", computer },
             { "reactor", reactorComponent },
             { "thruster", thrusterComponent },
