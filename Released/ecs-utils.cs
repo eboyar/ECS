@@ -2,7 +2,7 @@
 //by eboyar
 #region FIELDS
 
-const string version = "1.2.2";
+const string version = "1.2.4";
 
 List<string> DDs = new List<string>();
 
@@ -156,7 +156,7 @@ static readonly MyDefinitionId
 #region MAIN
 
 Program()
-        {
+{
     if (!string.IsNullOrEmpty(Me.CustomData)) ParseConfig();
     else WriteConfig();
 
@@ -239,7 +239,10 @@ IEnumerator<bool> Setup()
             var printer = printers.FirstOrDefault(p => p.Number == printerNumber);
             var welder = b as IMyShipWelder;
 
-            if (b.CustomName.Contains(managedInventoryTag)) welders.Add(new Welder(welder, ParseLoadout(welder)));
+            if (b.CustomName.Contains(managedInventoryTag))
+            {
+                welders.Add(new Welder(welder, ParseLoadout(welder)));
+            }
 
             if (printer != null)
             {
@@ -378,7 +381,10 @@ IEnumerator<bool> Setup()
             var mBay = assemblyBays.FirstOrDefault(bay => bay.Type == tag && bay.Number == welderNumber);
             var welder = b as IMyShipWelder;
 
-            if (b.CustomName.Contains(managedInventoryTag)) welders.Add(new Welder(welder, ParseLoadout(welder)));
+            if (b.CustomName.Contains(managedInventoryTag))
+            {
+                welders.Add(new Welder(welder, ParseLoadout(welder)));
+            }
 
             if (mBay != null)
             {
@@ -1168,8 +1174,16 @@ IEnumerator<bool> ReloadMIs()
     }
     yield return true;
 
+    runCounter = 0;
     foreach (var container in containers)
     {
+        runCounter++;
+        if (runCounter >= 10)
+        {
+            runCounter = 0;
+            yield return true;
+        }
+        container.UpdateInventory();
         if (splitQueue)
         {
             splitScheduler.AddRoutine(Resupply(container));
@@ -1178,12 +1192,19 @@ IEnumerator<bool> ReloadMIs()
         {
             scheduler.AddRoutine(Resupply(container));
         }
-        yield return true;
     }
     yield return true;
 
+    runCounter = 0;
     foreach (var welder in welders)
     {
+        runCounter++;
+        if (runCounter >= 10)
+        {
+            runCounter = 0;
+            yield return true;
+        }
+        welder.UpdateInventory();
         if (splitQueue)
         {
             splitScheduler.AddRoutine(Resupply(welder));
@@ -1192,7 +1213,6 @@ IEnumerator<bool> ReloadMIs()
         {
             scheduler.AddRoutine(Resupply(welder));
         }
-        yield return true;
     }
     yield return true;
 
