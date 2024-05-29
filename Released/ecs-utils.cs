@@ -2,7 +2,7 @@
 //by eboyar
 #region FIELDS
 
-const string version = "1.2.0";
+const string version = "1.2.1";
 
 List<string> DDs = new List<string>();
 
@@ -23,6 +23,7 @@ string nonDisposableDroneTag = "ASC";
 string disposableDroneAssemblerTag = "DDA";
 string nonDisposableDroneAssemblerTag = "Printer";
 
+string resupplyContainerTag = "resupply";
 string managedInventoryTag = "managed";
 string providerGroupTag = "Supplies";
 
@@ -30,7 +31,7 @@ bool splitQueue = false;
 bool creativeMode = false;
 bool displayLock = false;
 
-int safetyNet = 4;
+int safetyNet = 1;
 int reloadsPerUpdate = 1;
 int scansPerUpdate = 50;
 
@@ -364,7 +365,7 @@ IEnumerator<bool> Setup()
             tempProjectors.Add(b as IMyProjector);
             runCounter++;
         }
-        else if (b is IMyCargoContainer && b.CustomName.Contains("resupply"))
+        else if (b is IMyCargoContainer && b.CustomName.Contains(resupplyContainerTag))
         {
             var cc = b as IMyCargoContainer;
             containers.Add(new Container(cc, itemTypes, ParseLoadout(cc)));
@@ -1530,12 +1531,14 @@ void ParseConfig()
     creativeMode = ini.Get("General", "Creative Mode").ToBoolean(creativeMode);
     cacheInterval = ini.Get("General", "Inventory Update Interval").ToInt32(cacheInterval);
 
-    disposableDroneTag = ini.Get("Tags", "Disposable Drone Tag").ToString(disposableDroneTag);
-    nonDisposableDroneTag = ini.Get("Tags", "Non Disposable Drone Tag").ToString(nonDisposableDroneTag);
-    disposableDroneAssemblerTag = ini.Get("Tags", "Disposable Drone Assembler Tag").ToString(disposableDroneAssemblerTag);
-    nonDisposableDroneAssemblerTag = ini.Get("Tags", "Non Disposable Drone Assembler Tag").ToString(nonDisposableDroneAssemblerTag);
-    managedInventoryTag = ini.Get("Tags", "Managed Inventory Tag").ToString(managedInventoryTag);
-    providerGroupTag = ini.Get("Tags", "Provider Group Tag").ToString(providerGroupTag);
+    disposableDroneTag = ini.Get("Drone Tags", "Disposable Drone Tag").ToString(disposableDroneTag);
+    nonDisposableDroneTag = ini.Get("Drone Tags", "Non Disposable Drone Tag").ToString(nonDisposableDroneTag);
+    disposableDroneAssemblerTag = ini.Get("Drone Tags", "Disposable Drone Assembler Tag").ToString(disposableDroneAssemblerTag);
+    nonDisposableDroneAssemblerTag = ini.Get("Drone Tags", "Non Disposable Drone Assembler Tag").ToString(nonDisposableDroneAssemblerTag);
+
+    resupplyContainerTag = ini.Get("Inventory Tags", "Resupply Container Tag").ToString(resupplyContainerTag);
+    managedInventoryTag = ini.Get("Inventory Tags", "Managed Inventory Tag").ToString(managedInventoryTag);
+    providerGroupTag = ini.Get("Inventory Tags", "Provider Group Tag").ToString(providerGroupTag);
 
     safetyNet = ini.Get("Disposable Drones", "Safety Net").ToInt32(safetyNet);
     reloadsPerUpdate = ini.Get("Disposable Drones", "Reloads Per Update").ToInt32(reloadsPerUpdate);
@@ -1548,7 +1551,8 @@ void ParseConfig()
 void WriteConfig()
 {
     ini.AddSection("General");
-    ini.AddSection("Tags");
+    ini.AddSection("Drone Tags");
+    ini.AddSection("Inventory Tags");
     ini.AddSection("Disposable Drones");
     ini.AddSection("Printing");
 
@@ -1556,12 +1560,14 @@ void WriteConfig()
     ini.Set("General", "Creative Mode", creativeMode.ToString());
     ini.Set("General", "Inventory Update Interval", cacheInterval.ToString());
 
-    ini.Set("Tags", "Disposable Drone Tag", disposableDroneTag);
-    ini.Set("Tags", "Non Disposable Drone Tag", nonDisposableDroneTag);
-    ini.Set("Tags", "Disposable Drone Assembler Tag", disposableDroneAssemblerTag);
-    ini.Set("Tags", "Non Disposable Drone Assembler Tag", nonDisposableDroneAssemblerTag);
-    ini.Set("Tags", "Managed Inventory Tag", managedInventoryTag);
-    ini.Set("Tags", "Provider Group Tag", providerGroupTag);
+    ini.Set("Drone Tags", "Disposable Drone Tag", disposableDroneTag);
+    ini.Set("Drone Tags", "Non Disposable Drone Tag", nonDisposableDroneTag);
+    ini.Set("Drone Tags", "Disposable Drone Assembler Tag", disposableDroneAssemblerTag);
+    ini.Set("Drone Tags", "Non Disposable Drone Assembler Tag", nonDisposableDroneAssemblerTag);
+
+    ini.Set("Inventory Tags", "Resupply Container Tag", resupplyContainerTag);
+    ini.Set("Inventory Tags", "Managed Inventory Tag", managedInventoryTag);
+    ini.Set("Inventory Tags", "Provider Group Tag", providerGroupTag);
 
     ini.Set("Disposable Drones", "Safety Net", safetyNet.ToString());
     ini.Set("Disposable Drones", "Reloads Per Update", reloadsPerUpdate.ToString());
@@ -1572,7 +1578,6 @@ void WriteConfig()
     ini.Set("Printing", "Step Timeout", stepTimeout.ToString());
 
     Me.CustomData = ini.ToString();
-
 }
 
 void WriteStatus()
