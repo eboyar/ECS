@@ -32,6 +32,7 @@ string providerGroupTag = "Supplies";
 bool splitQueue = false;
 bool creativeMode = false;
 bool displayLock = false;
+bool autoSwitch = false;
 
 int safetyNet = 1;
 int reloadsPerUpdate = 1;
@@ -69,6 +70,12 @@ List<IMyBlockGroup> blockGroups = new List<IMyBlockGroup>(80);
 List<IMyBlockGroup> splitBlockGroups = new List<IMyBlockGroup>(80);
 List<IMyBlockGroup> selectedBlockGroups = new List<IMyBlockGroup>(15);
 Dictionary<IMyBlockGroup, List<IMyTerminalBlock>> cachedBlockGroups = new Dictionary<IMyBlockGroup, List<IMyTerminalBlock>>();
+
+Dictionary<string, int> hPerType = new Dictionary<string, int>(10);
+Dictionary<string, int> neededCycles = new Dictionary<string, int>(10);
+Dictionary<string, int> numPerType = new Dictionary<string, int>(10);
+List<string> typesNextCycle = new List<string>(10);
+List<string> types = new List<string>(10);
 
 //stuff for fast lookups
 static readonly MyItemType
@@ -197,6 +204,19 @@ void Main(string argument, UpdateType updateSource)
         }
 
         WriteStatus();
+
+        if (scheduler.IsEmpty())
+        {
+            if (autoSwitch)
+            {
+                scheduler.AddRoutine(AssembleDDs(types));
+                if (!creativeMode)
+                {
+                    scheduler.AddRoutine(ReloadDDs(types));
+                }
+                scheduler.AddRoutine(DeployDDs(types));
+            }
+        }
 
         if (scheduler.IsActive())
         {
@@ -538,18 +558,18 @@ IEnumerator<bool> UpdateInventories()
     }
 }
 
-IEnumerator<bool> AssembleDDs(string type)
+IEnumerator<bool> AssembleDDs(List<string> types)
 {
     yield return true;
 
     foreach (var bay in assemblyBays)
     {
-        if (string.IsNullOrEmpty(type) || bay.Type == type)
+        if (!types.Any() || types.Contains(bay.Type))
         {
             if (bay.Welders.All(IsValidBlock))
             {
-                logger.RReport($"Assembling {type} bay {bay.Number}");
-                DisplayStatus("MAIN", $"Assembling {type} bay {bay.Number}");
+                logger.RReport($"Assembling {bay.Type} bay {bay.Number}");
+                DisplayStatus("MAIN", $"Assembling {bay.Type} bay {bay.Number}");
                 yield return true;
 
                 foreach (var welder in bay.Welders)
@@ -634,7 +654,7 @@ IEnumerator<bool> AssembleDDs(string type)
         yield return true;
     }
 }
-IEnumerator<bool> ReloadDDs(string type)
+IEnumerator<bool> ReloadDDs(List<string> types)
 {
     logger.RReport("Preparing supplies to load bays");
     DisplayStatus("MAIN", "Preparing supplies to load bays");
@@ -648,7 +668,7 @@ IEnumerator<bool> ReloadDDs(string type)
     GridTerminalSystem.GetBlockGroups(blockGroups);
     yield return true;
 
-    if (string.IsNullOrEmpty(type))
+    if (!types.Any())
     {
         foreach (var group in blockGroups)
         {
@@ -666,7 +686,7 @@ IEnumerator<bool> ReloadDDs(string type)
     {
         foreach (var group in blockGroups)
         {
-            if (group.Name.Equals($"{type} {disposableDroneTag}"))
+            if (types.Any(type => group.Name.Equals($"{type} {disposableDroneTag}")))
             {
                 selectedBlockGroups.Add(group);
                 List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();
@@ -681,7 +701,7 @@ IEnumerator<bool> ReloadDDs(string type)
     int totalValidMerges = 0;
     foreach (var bay in assemblyBays)
     {
-        if (string.IsNullOrEmpty(type) || bay.Type == type)
+        if (!types.Any() || types.Contains(bay.Type))
         {
             foreach (var hardpoint in bay.Hardpoints)
             {
@@ -699,7 +719,7 @@ IEnumerator<bool> ReloadDDs(string type)
     runCounter = 0;
     foreach (var bay in assemblyBays)
     {
-        if (string.IsNullOrEmpty(type) || bay.Type == type)
+        if (!types.Any() || types.Contains(bay.Type))
         {
             foreach (var hardpoint in bay.Hardpoints)
             {
@@ -729,8 +749,9 @@ IEnumerator<bool> ReloadDDs(string type)
     DisplayStatus("MAIN", "Scanning bays");
     foreach (var bay in assemblyBays)
     {
-        if (string.IsNullOrEmpty(type) || bay.Type == type)
+        if (!types.Any() || types.Contains(bay.Type))
         {
+            string type = bay.Type;
             var group = selectedBlockGroups.FirstOrDefault(g => g.Name.Equals($"{bay.Type} {disposableDroneTag}"));
             if (group == null)
             {
@@ -796,8 +817,8 @@ IEnumerator<bool> ReloadDDs(string type)
         }
     }
 
-    logger.RReport($"Reloading {type} bays");
-    DisplayStatus("MAIN", $"Reloading {type} bays");
+    logger.RReport($"Reloading bays");
+    DisplayStatus("MAIN", $"Reloading bays");
     runCounter = 0;
     foreach (var block in tempBlocksToResupply)
     {
@@ -827,15 +848,15 @@ IEnumerator<bool> ReloadDDs(string type)
         yield return true;
     }
 }
-IEnumerator<bool> DeployDDs(string type)
+IEnumerator<bool> DeployDDs(List<string> types)
 {
     yield return true;
     foreach (var bay in assemblyBays)
     {
-        if (string.IsNullOrEmpty(type) || bay.Type == type)
+        if (!types.Any() || types.Contains(bay.Type))
         {
-            logger.RReport($"Deploying {type} bay {bay.Number}");
-            DisplayStatus("MAIN", $"Deploying {type} bay {bay.Number}");
+            logger.RReport($"Deploying {bay.Type} bay {bay.Number}");
+            DisplayStatus("MAIN", $"Deploying {bay.Type} bay {bay.Number}");
             if (bay.Timer == null)
             {
                 runCounter = 0;
@@ -865,7 +886,7 @@ IEnumerator<bool> DeployDDs(string type)
                 }
                 yield return true;
 
-                APCK.TryRun($"command:start-su:{type}-{bay.Number}");
+                APCK.TryRun($"command:start-su:{bay.Type}-{bay.Number}");
             }
             else
             {
@@ -1332,28 +1353,49 @@ IEnumerator<bool> Resupply(ManagedInventory managedInventory)
 
 #region HANDLERS
 
-void Auto(string type, int num)
+//assemble, reload, deploy
+void ARD(List<string> types, Dictionary<string, int> numPerType)
 {
-    int totalHardpoints = 0;
-    foreach (var bay in assemblyBays)
-    {
-        if (bay.Type == type)
-        {
-            totalHardpoints += bay.Hardpoints.Count;
-        }
-    }
-    int cyclesNeeded = (int)Math.Ceiling((double)num / totalHardpoints);
+    hPerType.Clear();
+    neededCycles.Clear();
+    typesNextCycle.Clear();
 
-    for (int i = 0; i < cyclesNeeded; i++)
+    foreach (var type in types)
     {
-        scheduler.AddRoutine(AssembleDDs(type));
+        int totalH = 0;
+        foreach (var bay in assemblyBays)
+        {
+            if (bay.Type == type)
+            {
+                totalH += bay.Hardpoints.Count;
+            }
+        }
+        hPerType[type] = totalH;
+        neededCycles[type] = (int)Math.Ceiling((double)numPerType[type] / totalH);
+    }
+
+    int maxCycles = neededCycles.Values.Max();
+
+    for (int i = 0; i < maxCycles; i++)
+    {
+        foreach (var type in types)
+        {
+            if (neededCycles[type] > 0)
+            {
+                typesNextCycle.Add(type);
+                neededCycles[type]--;
+            }
+        }
+        scheduler.AddRoutine(AssembleDDs(typesNextCycle));
         if (!creativeMode)
         {
-            scheduler.AddRoutine(ReloadDDs(type));
+            scheduler.AddRoutine(ReloadDDs(typesNextCycle));
         }
-        scheduler.AddRoutine(DeployDDs(type));
+        scheduler.AddRoutine(DeployDDs(typesNextCycle));
+        typesNextCycle.Clear();
     }
 }
+
 void Command(string arg)
 {
     var args = arg.Split(' ');
@@ -1361,11 +1403,47 @@ void Command(string arg)
 
     switch (baseCommand)
     {
-        case "auto":
-            if (args.Length > 2)
+        case "ard":
+            if (args.Length > 1)
             {
-                Auto(args[1], int.Parse(args[2]));
+                var autoArgs = arg.Substring(4).Split(',');
+                types.Clear();
+                numPerType.Clear();
+
+                foreach (var autoArg in autoArgs)
+                {
+                    var tn = autoArg.Trim().Split(' ');
+                    if (tn.Length == 2)
+                    {
+                        types.Add(tn[0]);
+                        numPerType[tn[0]] = int.Parse(tn[1]);
+                    }
+                }
+                ARD(types, numPerType);
             }
+            break;
+
+        case "auto":
+            types.Clear();
+            if (args.Length > 1)
+            {
+                var autoArgs = arg.Substring(5).Split(',');
+                foreach (var autoArg in autoArgs)
+                {
+                    types.Add(autoArg.Trim());
+                }
+            }
+            else
+            {
+                types.AddRange(DDs);
+            }
+            DisplayStatus("MAIN", "Auto mode enabled for " + string.Join(", ", types));
+            autoSwitch = true;
+            break;
+
+        case "cancel":
+            autoSwitch = false;
+            DisplayStatus("MAIN", "Auto mode cancelled");
             break;
 
         case "reload":
