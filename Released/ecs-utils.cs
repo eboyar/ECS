@@ -2,7 +2,7 @@
 //by eboyar
 #region FIELDS
 
-const string version = "1.2.24";
+const string version = "1.2.29";
 
 List<string> DDs = new List<string>();
 
@@ -76,6 +76,7 @@ Dictionary<string, int> neededCycles = new Dictionary<string, int>(10);
 Dictionary<string, int> numPerType = new Dictionary<string, int>(10);
 List<string> typesNextCycle = new List<string>(10);
 List<string> types = new List<string>(10);
+List<string> autoTypes = new List<string>(10);
 
 //stuff for fast lookups
 static readonly MyItemType
@@ -209,12 +210,12 @@ void Main(string argument, UpdateType updateSource)
         {
             if (autoSwitch)
             {
-                scheduler.AddRoutine(AssembleDDs(types));
+                scheduler.AddRoutine(AssembleDDs(autoTypes));
                 if (!creativeMode)
                 {
-                    scheduler.AddRoutine(ReloadDDs(types));
+                    scheduler.AddRoutine(ReloadDDs(autoTypes));
                 }
-                scheduler.AddRoutine(DeployDDs(types));
+                scheduler.AddRoutine(DeployDDs(autoTypes));
             }
         }
 
@@ -561,7 +562,6 @@ IEnumerator<bool> UpdateInventories()
 IEnumerator<bool> AssembleDDs(List<string> types)
 {
     yield return true;
-
     foreach (var bay in assemblyBays)
     {
         if (!types.Any() || types.Contains(bay.Type))
@@ -1353,10 +1353,8 @@ IEnumerator<bool> Resupply(ManagedInventory managedInventory)
 
 #region HANDLERS
 
-//assemble, reload, deploy
 void Make(List<string> types, Dictionary<string, int> numPerType)
 {
-    hPerType.Clear();
     neededCycles.Clear();
     typesNextCycle.Clear();
 
@@ -1370,7 +1368,6 @@ void Make(List<string> types, Dictionary<string, int> numPerType)
                 totalH += bay.Hardpoints.Count;
             }
         }
-        hPerType[type] = totalH;
         neededCycles[type] = (int)Math.Ceiling((double)numPerType[type] / totalH);
     }
 
@@ -1378,24 +1375,24 @@ void Make(List<string> types, Dictionary<string, int> numPerType)
 
     for (int i = 0; i < maxCycles; i++)
     {
+        typesNextCycle.Clear();
         foreach (var type in types)
         {
             if (neededCycles[type] > 0)
             {
-                typesNextCycle.Add(type);
                 neededCycles[type]--;
+                typesNextCycle.Add(type);
             }
         }
-        scheduler.AddRoutine(AssembleDDs(typesNextCycle));
+        scheduler.AddRoutine(AssembleDDs(new List<string>(typesNextCycle)));
         if (!creativeMode)
         {
-            scheduler.AddRoutine(ReloadDDs(typesNextCycle));
+            scheduler.AddRoutine(ReloadDDs(new List<string>(typesNextCycle)));
         }
-        scheduler.AddRoutine(DeployDDs(typesNextCycle));
+        scheduler.AddRoutine(DeployDDs(new List<string>(typesNextCycle)));
         typesNextCycle.Clear();
     }
 }
-
 void Command(string arg)
 {
     var args = arg.Split(' ');
@@ -1424,26 +1421,26 @@ void Command(string arg)
             break;
 
         case "auto":
-            types.Clear();
+            autoTypes.Clear();
             if (args.Length > 1)
             {
                 var autoArgs = arg.Substring(5).Split(',');
                 foreach (var autoArg in autoArgs)
                 {
-                    types.Add(autoArg.Trim());
+                    autoTypes.Add(autoArg.Trim());
                 }
             }
             else
             {
-                types.AddRange(DDs);
+                autoTypes.AddRange(DDs);
             }
-            DisplayStatus("MAIN", "Auto mode enabled for " + string.Join(", ", types));
+            logger.RReport("Auto mode initiated");
             autoSwitch = true;
             break;
 
         case "cancel":
             autoSwitch = false;
-            DisplayStatus("MAIN", "Auto mode cancelled");
+            logger.RReport("Auto mode cancelled");
             break;
 
         case "reload":
