@@ -2,7 +2,7 @@
 //by eboyar
 #region FIELDS
 
-const string version = "1.2.14";
+const string version = "1.2.24";
 
 List<string> DDs = new List<string>();
 
@@ -1354,7 +1354,7 @@ IEnumerator<bool> Resupply(ManagedInventory managedInventory)
 #region HANDLERS
 
 //assemble, reload, deploy
-void ARD(List<string> types, Dictionary<string, int> numPerType)
+void Make(List<string> types, Dictionary<string, int> numPerType)
 {
     hPerType.Clear();
     neededCycles.Clear();
@@ -1403,10 +1403,10 @@ void Command(string arg)
 
     switch (baseCommand)
     {
-        case "ard":
+        case "make":
             if (args.Length > 1)
             {
-                var autoArgs = arg.Substring(4).Split(',');
+                var autoArgs = arg.Substring(5).Split(',');
                 types.Clear();
                 numPerType.Clear();
 
@@ -1419,7 +1419,7 @@ void Command(string arg)
                         numPerType[tn[0]] = int.Parse(tn[1]);
                     }
                 }
-                ARD(types, numPerType);
+                Make(types, numPerType);
             }
             break;
 
