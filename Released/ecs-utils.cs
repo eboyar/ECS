@@ -2095,6 +2095,8 @@ class AssemblyBay
     {
         Hardpoints = new List<Hardpoint>();
         Welders = new List<IMyShipWelder>();
+        Doors = new List<IMyAdvancedDoor>();
+        Hinges = new List<IMyMotorAdvancedStator>();
         Type = type;
         Number = number;
     }
