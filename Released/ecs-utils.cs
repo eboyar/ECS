@@ -2,7 +2,7 @@
 //by eboyar
 #region FIELDS
 
-const string version = "1.2.37";
+const string version = "1.2.38";
 
 List<string> DDs = new List<string>();
 
@@ -442,12 +442,12 @@ IEnumerator<bool> Setup()
             }
             runCounter++;
         }
-        else if (b is IMyAdvancedDoor && b.CustomName.Contains(disposableDroneAssemblerTag))
+        else if (b is IMyDoor && b.CustomName.Contains(disposableDroneAssemblerTag))
         {
             var tag = b.CustomName.Split(' ')[0];
             var doorNumber = int.Parse(b.CustomName.Split(' ')[2]);
             var mBay = assemblyBays.FirstOrDefault(bay => bay.Type == tag && bay.Number == doorNumber);
-            var door = b as IMyAdvancedDoor;
+            var door = b as IMyDoor;
 
             if (mBay != null)
             {
@@ -933,8 +933,10 @@ IEnumerator<bool> DeployDDs(List<string> types)
 
                     if (IsValidBlock(d))
                     {
+                        bool rev = d.CustomName.Contains("reverse");
                         runCounter++;
-                        d.OpenDoor();
+                        if (rev) d.OpenDoor();
+                        else d.CloseDoor();
                     }
                 }
             }
@@ -1019,8 +1021,10 @@ IEnumerator<bool> DeployDDs(List<string> types)
 
                     if (IsValidBlock(d))
                     {
+                        bool rev = d.CustomName.Contains("reverse");
                         runCounter++;
-                        d.CloseDoor();
+                        if (rev) d.CloseDoor();
+                        else d.OpenDoor();
                     }
                 }
             }
@@ -2082,7 +2086,7 @@ class AssemblyBay
 {
     public List<Hardpoint> Hardpoints { get; private set; }
     public List<IMyShipWelder> Welders { get; private set; }
-    public List<IMyAdvancedDoor> Doors { get; private set; }
+    public List<IMyDoor> Doors { get; private set; }
     public List<IMyMotorAdvancedStator> Hinges { get; private set; }
     public IMyProjector Projector { get; set; }
     public IMyTimerBlock Timer { get; set; }
@@ -2095,7 +2099,7 @@ class AssemblyBay
     {
         Hardpoints = new List<Hardpoint>();
         Welders = new List<IMyShipWelder>();
-        Doors = new List<IMyAdvancedDoor>();
+        Doors = new List<IMyDoor>();
         Hinges = new List<IMyMotorAdvancedStator>();
         Type = type;
         Number = number;
