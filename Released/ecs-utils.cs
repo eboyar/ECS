@@ -2,7 +2,7 @@
 //by eboyar
 #region FIELDS
 
-const string version = "1.2.39";
+const string version = "1.2.40";
 
 List<string> DDs = new List<string>();
 
@@ -934,7 +934,7 @@ IEnumerator<bool> DeployDDs(List<string> types)
                     if (IsValidBlock(d))
                     {
                         runCounter++;
-                        d.CloseDoor();
+                        d.OpenDoor();
                     }
                 }
             }
@@ -1020,7 +1020,7 @@ IEnumerator<bool> DeployDDs(List<string> types)
                     if (IsValidBlock(d))
                     {
                         runCounter++;
-                        d.OpenDoor();
+                        d.CloseDoor();
                     }
                 }
             }
