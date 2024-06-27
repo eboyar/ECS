@@ -2,7 +2,7 @@
 //by eboyar
 #region FIELDS
 
-const string version = "1.2.29";
+const string version = "1.2.34";
 
 List<string> DDs = new List<string>();
 
@@ -96,6 +96,7 @@ static readonly MyItemType
     metalGrid = new MyItemType("MyObjectBuilder_Component", "MetalGrid"),
     smallTube = new MyItemType("MyObjectBuilder_Component", "SmallTube"),
     largeTube = new MyItemType("MyObjectBuilder_Component", "LargeTube"),
+    girder = new MyItemType("MyObjectBuilder_Component", "Girder"),
     motor = new MyItemType("MyObjectBuilder_Component", "Motor"),
     display = new MyItemType("MyObjectBuilder_Component", "Display"),
     bulletproofGlass = new MyItemType("MyObjectBuilder_Component", "BulletproofGlass"),
@@ -127,6 +128,7 @@ static readonly Dictionary<string, MyItemType> itemTypes = new Dictionary<string
             { "metalgrid", metalGrid },
             { "smalltube", smallTube },
             { "largetube", largeTube },
+            { "girder", girder },
             { "motor", motor },
             { "display", display },
             { "glass", bulletproofGlass },
@@ -306,6 +308,7 @@ IEnumerator<bool> Setup()
             if (printer != null)
             {
                 printer.Pistons.Add(piston);
+                printer.ExtensionLimit = (piston).MaxLimit;
             }
             else
             {
@@ -435,6 +438,44 @@ IEnumerator<bool> Setup()
             {
                 var newBay = new AssemblyBay(tag, timerNumber);
                 newBay.Timer = b as IMyTimerBlock;
+                assemblyBays.Add(newBay);
+            }
+            runCounter++;
+        }
+        else if (b is IMyAdvancedDoor && b.CustomName.Contains(disposableDroneAssemblerTag))
+        {
+            var tag = b.CustomName.Split(' ')[0];
+            var doorNumber = int.Parse(b.CustomName.Split(' ')[2]);
+            var mBay = assemblyBays.FirstOrDefault(bay => bay.Type == tag && bay.Number == doorNumber);
+            var door = b as IMyAdvancedDoor;
+
+            if (mBay != null)
+            {
+                mBay.Doors.Add(door);
+            }
+            else
+            {
+                var newBay = new AssemblyBay(tag, doorNumber);
+                newBay.Doors.Add(door);
+                assemblyBays.Add(newBay);
+            }
+            runCounter++;
+        }
+        else if (b is IMyMotorAdvancedStator && b.CustomName.Contains(disposableDroneAssemblerTag))
+        {
+            var tag = b.CustomName.Split(' ')[0];
+            var hingeNumber = int.Parse(b.CustomName.Split(' ')[2]);
+            var mBay = assemblyBays.FirstOrDefault(bay => bay.Type == tag && bay.Number == hingeNumber);
+            var hinge = b as IMyMotorAdvancedStator;
+
+            if (mBay != null)
+            {
+                mBay.Hinges.Add(hinge);
+            }
+            else
+            {
+                var newBay = new AssemblyBay(tag, hingeNumber);
+                newBay.Hinges.Add(hinge);
                 assemblyBays.Add(newBay);
             }
             runCounter++;
@@ -698,7 +739,7 @@ IEnumerator<bool> ReloadDDs(List<string> types)
     }
 
     yield return true;
-    int totalValidMerges = 0;
+    int totalMerges = 0;
     foreach (var bay in assemblyBays)
     {
         if (!types.Any() || types.Contains(bay.Type))
@@ -707,13 +748,13 @@ IEnumerator<bool> ReloadDDs(List<string> types)
             {
                 if (IsValidBlock(hardpoint.Merge))
                 {
-                    totalValidMerges++;
+                    totalMerges++;
                 }
             }
         }
     }
 
-    int maxRuns = Math.Max(totalValidMerges - 1, 10);
+    int maxRuns = Math.Max(totalMerges - 1, 10);
 
     yield return true;
     runCounter = 0;
@@ -857,6 +898,56 @@ IEnumerator<bool> DeployDDs(List<string> types)
         {
             logger.RReport($"Deploying {bay.Type} bay {bay.Number}");
             DisplayStatus("MAIN", $"Deploying {bay.Type} bay {bay.Number}");
+
+            bool hasDoors = bay.Doors.Any();
+            bool hasHinges = bay.Hinges.Any();
+
+            runCounter = 0;
+            if (hasHinges)
+            {
+                foreach (var h in bay.Hinges)
+                {
+                    if (runCounter >= 10)
+                    {
+                        runCounter = 0;
+                        yield return true;
+                    }
+
+                    if (IsValidBlock(h))
+                    {
+                        runCounter++;
+                        h.TargetVelocityRPM = -h.TargetVelocityRPM;
+                    }
+                }
+            }
+
+            if (hasDoors)
+            {
+                foreach (var d in bay.Doors)
+                {
+                    if (runCounter >= 10)
+                    {
+                        runCounter = 0;
+                        yield return true;
+                    }
+
+                    if (IsValidBlock(d))
+                    {
+                        runCounter++;
+                        d.OpenDoor();
+                    }
+                }
+            }
+
+            if (hasDoors || hasHinges)
+            {
+                for (int i = 0; i < 8; i++)
+                {
+                    yield return true;
+                }
+            }
+            else yield return true;
+
             if (bay.Timer == null)
             {
                 runCounter = 0;
@@ -891,6 +982,44 @@ IEnumerator<bool> DeployDDs(List<string> types)
             else
             {
                 bay.Timer.Trigger();
+            }
+
+            if (hasHinges || hasDoors) yield return true;
+
+            if (hasHinges)
+            {
+                foreach (var h in bay.Hinges)
+                {
+                    if (runCounter >= 10)
+                    {
+                        runCounter = 0;
+                        yield return true;
+                    }
+
+                    if (IsValidBlock(h))
+                    {
+                        runCounter++;
+                        h.TargetVelocityRPM = -h.TargetVelocityRPM;
+                    }
+                }
+            }
+
+            if (hasDoors)
+            {
+                foreach (var d in bay.Doors)
+                {
+                    if (runCounter >= 10)
+                    {
+                        runCounter = 0;
+                        yield return true;
+                    }
+
+                    if (IsValidBlock(d))
+                    {
+                        runCounter++;
+                        d.CloseDoor();
+                    }
+                }
             }
 
             for (int i = 0; i < safetyNet; i++)
@@ -972,6 +1101,11 @@ IEnumerator<bool> AssembleNDDs(string type, int num)
     }
 
     projector.Enabled = true;
+    while (!projector.IsProjecting)
+    {
+        yield return true;
+    }
+
     foreach (var welder in printer.Welders)
     {
         welder.Enabled = true;
@@ -1458,10 +1592,12 @@ void Command(string arg)
             if (splitQueue)
             {
                 splitScheduler.AddRoutine(ReloadMIs());
+                splitScheduler.AddRoutine(UpdateInventories());
             }
             else
             {
                 scheduler.AddRoutine(ReloadMIs());
+                scheduler.AddRoutine(UpdateInventories());
             }
             break;
 
@@ -1471,6 +1607,7 @@ void Command(string arg)
                 if (splitQueue)
                 {
                     splitScheduler.AddRoutine(AssembleNDDs(args[1], int.Parse(args[2])));
+
                 }
                 else
                 {
@@ -1945,6 +2082,8 @@ class AssemblyBay
 {
     public List<Hardpoint> Hardpoints { get; private set; }
     public List<IMyShipWelder> Welders { get; private set; }
+    public List<IMyAdvancedDoor> Doors { get; private set; }
+    public List<IMyMotorAdvancedStator> Hinges { get; private set; }
     public IMyProjector Projector { get; set; }
     public IMyTimerBlock Timer { get; set; }
     public string Type { get; set; }
