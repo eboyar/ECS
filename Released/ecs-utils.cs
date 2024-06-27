@@ -2,7 +2,7 @@
 //by eboyar
 #region FIELDS
 
-const string version = "1.2.35";
+const string version = "1.2.37";
 
 List<string> DDs = new List<string>();
 
@@ -43,7 +43,7 @@ float slowExtensionRate = 0.05f;
 int stepTimeout = 2;
 const float stepDistance = 0.5f;
 
-MyCommandLine cL = new MyCommandLine();
+MyCommandLine cl = new MyCommandLine();
 MyIni ini = new MyIni();
 Scheduler scheduler = new Scheduler();
 Scheduler splitScheduler = new Scheduler();
@@ -180,7 +180,7 @@ Program()
 void Main(string argument, UpdateType updateSource)
 {
 
-    if (cL.TryParse(argument))
+    if (cl.TryParse(argument))
     {
         Command(argument);
     }
@@ -901,7 +901,7 @@ IEnumerator<bool> DeployDDs(List<string> types)
 
             bool hasDoors = bay.Doors?.Any() ?? false;
             bool hasHinges = bay.Hinges?.Any() ?? false;
-    
+
             runCounter = 0;
             if (hasHinges)
             {
@@ -984,7 +984,10 @@ IEnumerator<bool> DeployDDs(List<string> types)
                 bay.Timer.Trigger();
             }
 
-            if (hasHinges || hasDoors) yield return true;
+            for (int i = 0; i < safetyNet; i++)
+            {
+                yield return true;
+            }
 
             if (hasHinges)
             {
@@ -1022,10 +1025,7 @@ IEnumerator<bool> DeployDDs(List<string> types)
                 }
             }
 
-            for (int i = 0; i < safetyNet; i++)
-            {
-                yield return true;
-            }
+            if (hasHinges || hasDoors) yield return true;
         }
     }
 }
