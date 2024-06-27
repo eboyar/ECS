@@ -2,7 +2,7 @@
 //by eboyar
 #region FIELDS
 
-const string version = "1.2.34";
+const string version = "1.2.35";
 
 List<string> DDs = new List<string>();
 
@@ -899,9 +899,9 @@ IEnumerator<bool> DeployDDs(List<string> types)
             logger.RReport($"Deploying {bay.Type} bay {bay.Number}");
             DisplayStatus("MAIN", $"Deploying {bay.Type} bay {bay.Number}");
 
-            bool hasDoors = bay.Doors.Any();
-            bool hasHinges = bay.Hinges.Any();
-
+            bool hasDoors = bay.Doors?.Any() ?? false;
+            bool hasHinges = bay.Hinges?.Any() ?? false;
+    
             runCounter = 0;
             if (hasHinges)
             {
