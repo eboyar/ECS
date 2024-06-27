@@ -933,10 +933,8 @@ IEnumerator<bool> DeployDDs(List<string> types)
 
                     if (IsValidBlock(d))
                     {
-                        bool rev = d.CustomName.Contains("reverse");
                         runCounter++;
-                        if (rev) d.OpenDoor();
-                        else d.CloseDoor();
+                        d.OpenDoor();
                     }
                 }
             }
@@ -1021,10 +1019,8 @@ IEnumerator<bool> DeployDDs(List<string> types)
 
                     if (IsValidBlock(d))
                     {
-                        bool rev = d.CustomName.Contains("reverse");
                         runCounter++;
-                        if (rev) d.CloseDoor();
-                        else d.OpenDoor();
+                        d.CloseDoor();
                     }
                 }
             }
