@@ -2,7 +2,7 @@
 //by eboyar
 #region FIELDS
 
-const string version = "1.2.40";
+const string version = "1.2.41";
 
 List<string> DDs = new List<string>();
 
@@ -107,6 +107,7 @@ static readonly MyItemType
     medicalComponent = new MyItemType("MyObjectBuilder_Component", "Medical"),
     radioCommunicationComponent = new MyItemType("MyObjectBuilder_Component", "RadioCommunication"),
     detectorComponent = new MyItemType("MyObjectBuilder_Component", "Detector"),
+    superconductor = new MyItemType("MyObjectBuilder_Component", "Superconductor"),
     solarCell = new MyItemType("MyObjectBuilder_Component", "SolarCell"),
     powerCell = new MyItemType("MyObjectBuilder_Component", "PowerCell");
 
@@ -139,6 +140,7 @@ static readonly Dictionary<string, MyItemType> itemTypes = new Dictionary<string
             { "medical", medicalComponent },
             { "radio", radioCommunicationComponent },
             { "detector", detectorComponent },
+            { "superconductor", superconductor},
             { "solarcell", solarCell },
             { "powercell", powerCell }
         };
