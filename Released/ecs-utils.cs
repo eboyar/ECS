@@ -2,7 +2,7 @@
 //by eboyar
 #region FIELDS
 
-const string version = "1.2.45";
+const string version = "1.2.50";
 
 List<string> DDs = new List<string>();
 
@@ -34,7 +34,7 @@ bool creativeMode = false;
 bool displayLock = false;
 bool autoSwitch = false;
 
-bool sequential = true;
+int maxConcurrent = 1;
 float tankFillRatio = 0.95f;
 int safetyNet = 1;
 int reloadsPerUpdate = 1;
@@ -73,8 +73,11 @@ List<IMyBlockGroup> splitBlockGroups = new List<IMyBlockGroup>(80);
 List<IMyBlockGroup> selectedBlockGroups = new List<IMyBlockGroup>(15);
 Dictionary<IMyBlockGroup, List<IMyTerminalBlock>> cachedBlockGroups = new Dictionary<IMyBlockGroup, List<IMyTerminalBlock>>();
 
-List<AssemblyBay> activeBays = new List<AssemblyBay>(100);
-Dictionary<AssemblyBay, int> bayProgress = new Dictionary<AssemblyBay, int>(100);
+List<AssemblyBay> activeBays = new List<AssemblyBay>(50);
+Dictionary<AssemblyBay, int> bayProgress = new Dictionary<AssemblyBay, int>(50);
+Dictionary<AssemblyBay, int> activationTimes = new Dictionary<AssemblyBay, int>(50);
+Queue<AssemblyBay> bayQueue = new Queue<AssemblyBay>(50);
+List<AssemblyBay> currentBatch = new List<AssemblyBay>(50);
 
 Dictionary<string, int> hPerType = new Dictionary<string, int>(10);
 Dictionary<string, int> neededCycles = new Dictionary<string, int>(10);
@@ -612,151 +615,87 @@ IEnumerator<bool> AssembleDDs(List<string> types)
     yield return true;
 
     int hardLimitCycles = 60;
-    int hardLimitSequence = 14;
+    int hardLimitSingleOperation = 10;
+    int activationDelay = 3;
 
-    int cycleCount = 0;
-    runCounter = 0;
+    int runCounter = 0;
 
     activeBays.Clear();
     bayProgress.Clear();
+    activationTimes.Clear();
+    bayQueue.Clear();
+    currentBatch.Clear();
 
-    if (sequential)
+    foreach (var bay in assemblyBays)
     {
-        foreach (var bay in assemblyBays)
+        if (!types.Any() || types.Contains(bay.Type))
         {
-            if (!types.Any() || types.Contains(bay.Type))
+            if (bay.Welders.All(IsValidBlock))
             {
-                if (bay.Welders.All(IsValidBlock))
-                {
-                    logger.RReport($"Assembling {bay.Type} bay {bay.Number}");
-                    DisplayStatus("MAIN", $"Assembling {bay.Type} bay {bay.Number}");
-                    yield return true;
-
-                    foreach (var welder in bay.Welders)
-                    {
-                        welder.Enabled = true;
-                    }
-
-                    if (bay.Projector != null && IsValidBlock(bay.Projector))
-                    {
-                        foreach (var hardpoint in bay.Hardpoints)
-                        {
-                            if (IsValidBlock(hardpoint.Merge) && IsValidBlock(hardpoint.Connector))
-                            {
-                                hardpoint.Merge.Enabled = true;
-                                hardpoint.Connector.Enabled = true;
-                            }
-                        }
-
-                        bay.Projector.Enabled = true;
-
-                        while (!bay.Projector.IsProjecting)
-                        {
-                            yield return true;
-                        }
-                        while (bay.Projector.RemainingBlocks > 0 || cycleCount > hardLimitCycles)
-                        {
-                            yield return true;
-                            cycleCount = 0;
-                        }
-                        yield return true;
-
-                        foreach (var hardpoint in bay.Hardpoints)
-                        {
-                            if (!creativeMode)
-                            {
-                                hardpoint.Connector.Connect();
-                            }
-                        }
-                        bay.Projector.Enabled = false;
-                    }
-                    else
-                    {
-                        foreach (var hardpoint in bay.Hardpoints)
-                        {
-                            if (IsValidBlock(hardpoint.Merge) && IsValidBlock(hardpoint.Connector) && IsValidBlock(hardpoint.Projector))
-                            {
-
-                                hardpoint.Merge.Enabled = true;
-                                hardpoint.Connector.Enabled = true;
-                                hardpoint.Projector.Enabled = true;
-
-                                while (!hardpoint.Projector.IsProjecting)
-                                {
-                                    yield return true;
-                                }
-
-                                while (hardpoint.Projector.RemainingBlocks > 0)
-                                {
-                                    yield return true;
-                                }
-                                yield return true;
-                                if (!creativeMode)
-                                {
-                                    hardpoint.Connector.Connect();
-                                }
-                                hardpoint.Projector.Enabled = false;
-                            }
-                        }
-                    }
-                }
-                foreach (var welder in bay.Welders)
-                {
-                    welder.Enabled = false;
-                }
-                yield return true;
+                bayQueue.Enqueue(bay);
+                bayProgress[bay] = 0;
             }
         }
     }
-    else
+
+    yield return true;
+
+    while (bayQueue.Any() || activeBays.Any())
     {
-        foreach (var bay in assemblyBays)
+        int activeCount = activeBays.Count;
+        currentBatch.Clear();
+
+        while (bayQueue.Any() && (maxConcurrent == 0 || activeCount < maxConcurrent))
         {
-            if (!types.Any() || types.Contains(bay.Type))
+            var bay = bayQueue.Dequeue();
+            if (bay.Welders.All(IsValidBlock))
             {
-                if (bay.Welders.All(IsValidBlock))
+                currentBatch.Add(bay);
+                activeBays.Add(bay);
+                activeCount++;
+            }
+        }
+
+        foreach (var bay in currentBatch)
+        {
+            logger.RReport($"Assembling {bay.Type} bay {bay.Number}");
+            DisplayStatus("MAIN", $"Assembling {bay.Type} bay {bay.Number}");
+
+            foreach (var welder in bay.Welders)
+            {
+                welder.Enabled = true;
+            }
+
+            if (bay.Projector != null && IsValidBlock(bay.Projector))
+            {
+                foreach (var hardpoint in bay.Hardpoints)
                 {
-                    activeBays.Add(bay);
-                    bayProgress[bay] = 0;
-
-                    logger.RReport($"Assembling {bay.Type} bay {bay.Number}");
-                    DisplayStatus("MAIN", $"Assembling {bay.Type} bay {bay.Number}");
-
-                    foreach (var welder in bay.Welders)
+                    if (IsValidBlock(hardpoint.Merge) && IsValidBlock(hardpoint.Connector))
                     {
-                        welder.Enabled = true;
+                        hardpoint.Merge.Enabled = true;
+                        hardpoint.Connector.Enabled = true;
                     }
+                }
 
-                    if (bay.Projector != null && IsValidBlock(bay.Projector))
+                bay.Projector.Enabled = true;
+            }
+            else
+            {
+                foreach (var hardpoint in bay.Hardpoints)
+                {
+                    if (IsValidBlock(hardpoint.Merge) && IsValidBlock(hardpoint.Connector) && IsValidBlock(hardpoint.Projector))
                     {
-                        foreach (var hardpoint in bay.Hardpoints)
-                        {
-                            if (IsValidBlock(hardpoint.Merge) && IsValidBlock(hardpoint.Connector))
-                            {
-                                hardpoint.Merge.Enabled = true;
-                                hardpoint.Connector.Enabled = true;
-                            }
-                        }
-
-                        bay.Projector.Enabled = true;
-                    }
-                    else
-                    {
-                        foreach (var hardpoint in bay.Hardpoints)
-                        {
-                            if (IsValidBlock(hardpoint.Merge) && IsValidBlock(hardpoint.Connector) && IsValidBlock(hardpoint.Projector))
-                            {
-                                hardpoint.Merge.Enabled = true;
-                                hardpoint.Connector.Enabled = true;
-                                hardpoint.Projector.Enabled = true;
-                            }
-                        }
+                        hardpoint.Merge.Enabled = true;
+                        hardpoint.Connector.Enabled = true;
+                        hardpoint.Projector.Enabled = true;
                     }
                 }
             }
 
+            activationTimes[bay] = 0;
+
             runCounter++;
-            if (runCounter >= hardLimitSequence)
+            if (runCounter >= hardLimitSingleOperation)
             {
                 runCounter = 0;
                 yield return true;
@@ -765,9 +704,11 @@ IEnumerator<bool> AssembleDDs(List<string> types)
 
         yield return true;
 
-        while (activeBays.Any())
+        foreach (var bay in activeBays.ToList())
         {
-            foreach (var bay in activeBays.ToList())
+            activationTimes[bay]++;
+
+            if (activationTimes[bay] > activationDelay)
             {
                 if (bay.Projector != null && IsValidBlock(bay.Projector))
                 {
@@ -802,18 +743,20 @@ IEnumerator<bool> AssembleDDs(List<string> types)
                         }
                     }
                 }
-                bayProgress[bay]++;
             }
+            else yield return true;
 
-            yield return true;
+            bayProgress[bay]++;
         }
 
-        foreach (var bay in assemblyBays)
+        yield return true;
+    }
+
+    foreach (var bay in assemblyBays)
+    {
+        foreach (var welder in bay.Welders)
         {
-            foreach (var welder in bay.Welders)
-            {
-                welder.Enabled = false;
-            }
+            welder.Enabled = false;
         }
     }
 
@@ -1893,7 +1836,7 @@ void ParseConfig()
     managedInventoryTag = ini.Get("Inventory Tags", "Managed Inventory Tag").ToString(managedInventoryTag);
     providerGroupTag = ini.Get("Inventory Tags", "Provider Group Tag").ToString(providerGroupTag);
 
-    sequential = ini.Get("Disposable Drones", "Sequential").ToBoolean(sequential);
+    maxConcurrent = ini.Get("Disposable Drones", "Max Concurrent").ToInt32(maxConcurrent);
     tankFillRatio = ini.Get("Disposable Drones", "Tank Fill Ratio").ToSingle(tankFillRatio);
     safetyNet = ini.Get("Disposable Drones", "Safety Net").ToInt32(safetyNet);
     reloadsPerUpdate = ini.Get("Disposable Drones", "Reloads Per Update").ToInt32(reloadsPerUpdate);
@@ -1926,7 +1869,7 @@ void WriteConfig()
     ini.Set("Inventory Tags", "Managed Inventory Tag", managedInventoryTag);
     ini.Set("Inventory Tags", "Provider Group Tag", providerGroupTag);
 
-    ini.Set("Disposable Drones", "Sequential", sequential.ToString());
+    ini.Set("Disposable Drones", "Max Concurrent", maxConcurrent.ToString());
     ini.Set("Disposable Drones", "Tank Fill Ratio", tankFillRatio.ToString());
     ini.Set("Disposable Drones", "Safety Net", safetyNet.ToString());
     ini.Set("Disposable Drones", "Reloads Per Update", reloadsPerUpdate.ToString());
