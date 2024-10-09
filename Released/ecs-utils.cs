@@ -2,7 +2,7 @@
 //by eboyar
 #region FIELDS
 
-const string version = "1.2.50";
+const string version = "1.2.51";
 
 List<string> DDs = new List<string>();
 
@@ -75,7 +75,7 @@ Dictionary<IMyBlockGroup, List<IMyTerminalBlock>> cachedBlockGroups = new Dictio
 
 List<AssemblyBay> activeBays = new List<AssemblyBay>(50);
 Dictionary<AssemblyBay, int> bayProgress = new Dictionary<AssemblyBay, int>(50);
-Dictionary<AssemblyBay, int> activationTimes = new Dictionary<AssemblyBay, int>(50);
+Dictionary<AssemblyBay, int> verificationTimes = new Dictionary<AssemblyBay, int>(50);
 Queue<AssemblyBay> bayQueue = new Queue<AssemblyBay>(50);
 List<AssemblyBay> currentBatch = new List<AssemblyBay>(50);
 
@@ -86,7 +86,6 @@ List<string> typesNextCycle = new List<string>(10);
 List<string> types = new List<string>(10);
 List<string> autoTypes = new List<string>(10);
 
-//stuff for fast lookups
 static readonly MyItemType
     uranium = new MyItemType("MyObjectBuilder_Ingot", "Uranium"),
     pistolMag = new MyItemType("MyObjectBuilder_AmmoMagazine", "SemiAutoPistolMagazine"),
@@ -616,13 +615,13 @@ IEnumerator<bool> AssembleDDs(List<string> types)
 
     int hardLimitCycles = 60;
     int hardLimitSingleOperation = 10;
-    int activationDelay = 3;
+    int verificationDelay = 3;
 
     int runCounter = 0;
 
     activeBays.Clear();
     bayProgress.Clear();
-    activationTimes.Clear();
+    verificationTimes.Clear();
     bayQueue.Clear();
     currentBatch.Clear();
 
@@ -692,7 +691,7 @@ IEnumerator<bool> AssembleDDs(List<string> types)
                 }
             }
 
-            activationTimes[bay] = 0;
+            verificationTimes[bay] = 0;
 
             runCounter++;
             if (runCounter >= hardLimitSingleOperation)
@@ -706,9 +705,9 @@ IEnumerator<bool> AssembleDDs(List<string> types)
 
         foreach (var bay in activeBays.ToList())
         {
-            activationTimes[bay]++;
+            verificationTimes[bay]++;
 
-            if (activationTimes[bay] > activationDelay)
+            if (verificationTimes[bay] > verificationDelay)
             {
                 if (bay.Projector != null && IsValidBlock(bay.Projector))
                 {
@@ -961,6 +960,34 @@ IEnumerator<bool> ReloadDDs(List<string> types)
         yield return true;
     }
 }
+IEnumerator<bool> SleepDDs(List<string> types)
+{
+    logger.RReport("Merging and sleeping bays");
+    DisplayStatus("MAIN", "Merging and sleeping bays");
+    yield return true;
+    runCounter = 0;
+
+    foreach (var bay in assemblyBays)
+    {
+        if ((!types.Any() || types.Contains(bay.Type)))
+        {
+            foreach (var hardpoint in bay.Hardpoints)
+            {
+                if (IsValidBlock(hardpoint.Merge) && (IsValidBlock(hardpoint.Connector)) && hardpoint.Connector.IsConnected)
+                {
+                    hardpoint.Merge.Enabled = true;
+                    runCounter++;
+                }
+                if (runCounter >= 28)
+                {
+                    runCounter = 0;
+                    yield return true;
+                }
+            }
+        }
+    }
+}
+
 IEnumerator<bool> DeployDDs(List<string> types)
 {
     yield return true;
@@ -1540,7 +1567,7 @@ IEnumerator<bool> Resupply(ManagedInventory managedInventory)
 
 #region HANDLERS
 
-void Make(List<string> types, Dictionary<string, int> numPerType)
+void Make(bool prep, List<string> types, Dictionary<string, int> numPerType)
 {
     neededCycles.Clear();
     typesNextCycle.Clear();
@@ -1576,7 +1603,15 @@ void Make(List<string> types, Dictionary<string, int> numPerType)
         {
             scheduler.AddRoutine(ReloadDDs(new List<string>(typesNextCycle)));
         }
-        scheduler.AddRoutine(DeployDDs(new List<string>(typesNextCycle)));
+
+        if (prep)
+        {
+            scheduler.AddRoutine(SleepDDs(new List<string>(typesNextCycle)));
+        }
+        else
+            scheduler.AddRoutine(DeployDDs(new List<string>(typesNextCycle)));
+
+
         typesNextCycle.Clear();
     }
 }
@@ -1590,20 +1625,40 @@ void Command(string arg)
         case "make":
             if (args.Length > 1)
             {
-                var autoArgs = arg.Substring(5).Split(',');
+                var makeArgs = arg.Substring(5).Split(',');
                 types.Clear();
                 numPerType.Clear();
 
-                foreach (var autoArg in autoArgs)
+                foreach (var makeArg in makeArgs)
                 {
-                    var tn = autoArg.Trim().Split(' ');
+                    var tn = makeArg.Trim().Split(' ');
                     if (tn.Length == 2)
                     {
                         types.Add(tn[0]);
                         numPerType[tn[0]] = int.Parse(tn[1]);
                     }
                 }
-                Make(types, numPerType);
+                Make(false, types, numPerType);
+            }
+            break;
+
+        case "prepare":
+            if (args.Length > 1)
+            {
+                var prepArgs = arg.Substring(8).Split(',');
+                types.Clear();
+                numPerType.Clear();
+
+                foreach (var prepArg in prepArgs)
+                {
+                    var tn = prepArg.Trim().Split(' ');
+                    if (tn.Length == 2)
+                    {
+                        types.Add(tn[0]);
+                        numPerType[tn[0]] = int.Parse(tn[1]);
+                    }
+                }
+                Make(true, types, numPerType);
             }
             break;
 
