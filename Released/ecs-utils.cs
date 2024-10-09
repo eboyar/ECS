@@ -991,6 +991,8 @@ IEnumerator<bool> SleepDDs(List<string> types)
 IEnumerator<bool> DeployDDs(List<string> types)
 {
     yield return true;
+    currentBatch.Clear();
+
     foreach (var bay in assemblyBays)
     {
         if (!types.Any() || types.Contains(bay.Type))
@@ -1659,6 +1661,19 @@ void Command(string arg)
                     }
                 }
                 Make(true, types, numPerType);
+            }
+            break;
+
+        case "deploy":
+            if (args.Length > 1)
+            {
+                var deployArgs = arg.Substring(7).Split(',');
+                types.Clear();
+                foreach (var deployArg in deployArgs)
+                {
+                    types.Add(deployArg.Trim());
+                }
+                scheduler.AddRoutine(DeployDDs(types));
             }
             break;
 
