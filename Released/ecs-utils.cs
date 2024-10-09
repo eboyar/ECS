@@ -2,7 +2,7 @@
 //by eboyar
 #region FIELDS
 
-const string version = "1.2.51";
+const string version = "1.2.53";
 
 List<string> DDs = new List<string>();
 
@@ -1609,6 +1609,7 @@ void Make(bool prep, List<string> types, Dictionary<string, int> numPerType)
         if (prep)
         {
             scheduler.AddRoutine(SleepDDs(new List<string>(typesNextCycle)));
+            break;
         }
         else
             scheduler.AddRoutine(DeployDDs(new List<string>(typesNextCycle)));
